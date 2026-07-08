@@ -1,0 +1,189 @@
+import { NextRequest } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { ChallengeCreateSchema, ChallengeQuerySchema } from "@/lib/validations/challenge";
+import { createAuditLog, getRequestMeta } from "@/lib/audit";
+import { serializeChallenge } from "@/lib/serializers";
+import {
+  ok,
+  created,
+  badRequest,
+  unauthorized,
+  forbidden,
+  serverError,
+  validationError,
+} from "@/lib/api-response";
+import type { Prisma } from "@prisma/client";
+
+/**
+ * GET /api/challenges
+ * Public-ish: returns OPEN challenges to all; DRAFT/CLOSED visible only to relevant roles.
+ * Query params: page, limit, status, domain, search, sortBy, sortOrder
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const session = await auth();
+    const role = session?.user?.role;
+    const userId = session?.user?.id;
+
+    const { searchParams } = new URL(req.url);
+    const queryParsed = ChallengeQuerySchema.safeParse({
+      page: searchParams.get("page"),
+      limit: searchParams.get("limit"),
+      status: searchParams.get("status"),
+      domain: searchParams.get("domain"),
+      search: searchParams.get("search"),
+      sortBy: searchParams.get("sortBy"),
+      sortOrder: searchParams.get("sortOrder"),
+    });
+
+    if (!queryParsed.success) {
+      return validationError(queryParsed.error.flatten());
+    }
+
+    const { page, limit, status, domain, search, sortBy, sortOrder } =
+      queryParsed.data;
+
+    const skip = (page - 1) * limit;
+
+    // Build where clause based on role
+    const where: Prisma.ChallengeWhereInput = {};
+
+    if (status) {
+      where.status = status;
+    } else {
+      // Unauthenticated and students only see OPEN challenges
+      if (!role || role === "STUDENT") {
+        where.status = "OPEN";
+      }
+      // Industry SPOC sees their own challenges of all statuses
+      // Admin sees everything
+    }
+
+    // Industry SPOC: filter to own challenges if no explicit status filter
+    if (role === "INDUSTRY_SPOC" && userId) {
+      const profile = await prisma.industryProfile.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (profile && !status) {
+        where.OR = [
+          { status: "OPEN" },
+          { industryProfileId: profile.id },
+        ];
+        delete where.status;
+      }
+    }
+
+    if (domain) {
+      where.domain = domain;
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { problemStatement: { contains: search, mode: "insensitive" } },
+        { tags: { has: search } },
+      ];
+    }
+
+    const [total, challenges] = await Promise.all([
+      prisma.challenge.count({ where }),
+      prisma.challenge.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          industryProfile: {
+            select: {
+              id: true,
+              userId: true,
+              companyName: true,
+              industry: true,
+              logoUrl: true,
+              isCIIMember: true,
+            },
+          },
+          _count: { select: { proposals: true } },
+        },
+      }),
+    ]);
+
+    const serialized = challenges.map((c) =>
+      serializeChallenge(c, (role as never) ?? "STUDENT", userId)
+    );
+
+    return ok({
+      data: serialized,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (err) {
+    console.error("[GET /api/challenges]", err);
+    return serverError();
+  }
+}
+
+/**
+ * POST /api/challenges
+ * Industry SPOC only — creates a new challenge.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return unauthorized();
+    if (session.user.role !== "INDUSTRY_SPOC") {
+      return forbidden("Only Industry SPOCs can create challenges");
+    }
+
+    const body = await req.json();
+    const parsed = ChallengeCreateSchema.safeParse(body);
+    if (!parsed.success) return validationError(parsed.error.flatten());
+
+    const data = parsed.data;
+
+    const industryProfile = await prisma.industryProfile.findUnique({
+      where: { userId: session.user.id },
+    });
+
+    if (!industryProfile) {
+      return badRequest("Industry profile not found — please complete registration");
+    }
+
+    const challenge = await prisma.challenge.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        problemStatement: data.problemStatement,
+        domain: data.domain,
+        deadline: new Date(data.deadline),
+        budgetRange: data.budgetRange,
+        tags: data.tags ?? [],
+        attachmentUrls: data.attachmentUrls ?? [],
+        industryProfileId: industryProfile.id,
+        status: "DRAFT",
+      },
+    });
+
+    const { ipAddress, userAgent } = getRequestMeta(req);
+    await createAuditLog({
+      userId: session.user.id,
+      action: "CHALLENGE_CREATED",
+      entityType: "Challenge",
+      entityId: challenge.id,
+      newValue: { title: challenge.title, domain: challenge.domain },
+      ipAddress,
+      userAgent,
+    });
+
+    return created(challenge);
+  } catch (err) {
+    console.error("[POST /api/challenges]", err);
+    return serverError();
+  }
+}
