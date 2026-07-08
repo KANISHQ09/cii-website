@@ -49,29 +49,33 @@ export async function GET(req: NextRequest) {
     // Build where clause based on role
     const where: Prisma.ChallengeWhereInput = {};
 
-    if (status) {
-      where.status = status;
-    } else {
-      // Unauthenticated and students only see OPEN challenges
-      if (!role || role === "STUDENT") {
-        where.status = "OPEN";
-      }
-      // Industry SPOC sees their own challenges of all statuses
-      // Admin sees everything
-    }
-
-    // Industry SPOC: filter to own challenges if no explicit status filter
-    if (role === "INDUSTRY_SPOC" && userId) {
+    if (!role || role === "STUDENT") {
+      // Students and public can ONLY see OPEN challenges
+      where.status = "OPEN";
+    } else if (role === "INDUSTRY_SPOC" && userId) {
       const profile = await prisma.industryProfile.findUnique({
         where: { userId },
         select: { id: true },
       });
-      if (profile && !status) {
+      const industryId = profile?.id ?? "none";
+
+      if (status) {
+        if (status === "OPEN") {
+          where.status = "OPEN";
+        } else {
+          where.status = status;
+          where.industryProfileId = industryId;
+        }
+      } else {
         where.OR = [
           { status: "OPEN" },
-          { industryProfileId: profile.id },
+          { industryProfileId: industryId },
         ];
-        delete where.status;
+      }
+    } else {
+      // Admin sees everything
+      if (status) {
+        where.status = status;
       }
     }
 

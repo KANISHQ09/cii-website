@@ -8,6 +8,7 @@ import {
   serverError,
   validationError,
 } from "@/lib/api-response";
+import { sendPasswordResetEmail } from "@/lib/email";
 
 const ForgotPasswordSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -63,17 +64,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ─── EMAIL STUB ────────────────────────────────────────────────────────
-    // TODO: Replace with Nodemailer when integrated
-    // The reset URL would be: ${process.env.NEXTAUTH_URL}/auth/reset-password?token=${token}
     const resetUrl = `${process.env.NEXTAUTH_URL ?? "http://localhost:3000"}/api/auth/reset-password?token=${token}`;
 
-    console.info(
-      `[ForgotPassword] Reset token for ${user.email}: ${resetUrl}\n` +
-        `Expires at: ${expiresAt.toISOString()}\n` +
-        `(Replace this log with Nodemailer send when email is configured)`
-    );
-    // ──────────────────────────────────────────────────────────────────────
+    try {
+      await sendPasswordResetEmail(user.email, user.name, resetUrl);
+    } catch (err) {
+      console.error("[ForgotPassword] Failed to send email, proceeding anyway:", err);
+    }
 
     return ok({
       message:

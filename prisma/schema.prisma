@@ -36,9 +36,11 @@ enum ChallengeStatus {
 }
 
 enum ProposalStatus {
+  DRAFT
   SUBMITTED
   UNDER_REVIEW
   REVISION_REQUESTED
+  RESUBMITTED
   APPROVED
   REJECTED
 }

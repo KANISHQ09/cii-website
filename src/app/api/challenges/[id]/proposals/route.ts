@@ -61,10 +61,27 @@ export async function GET(
     }
 
     const skip = (page - 1) * limit;
-    const where = {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {
       challengeId: id,
       ...(status ? { status } : {}),
     };
+
+    let requestingUserInstitutionId: string | undefined;
+    if (isInstitutionSpoc) {
+      const spocProfile = await prisma.institutionProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { institutionId: true },
+      });
+      if (!spocProfile) {
+        return ok({
+          data: [],
+          pagination: { total: 0, page, limit, totalPages: 0 },
+        });
+      }
+      where.studentProfile = { institutionId: spocProfile.institutionId };
+      requestingUserInstitutionId = spocProfile.institutionId;
+    }
 
     const [total, proposals] = await Promise.all([
       prisma.proposal.count({ where }),
@@ -80,7 +97,9 @@ export async function GET(
               department: true,
               yearOfStudy: true,
               skills: true,
+              institutionId: true,
               institution: { select: { name: true, city: true } },
+              user: { select: { name: true, email: true } },
             },
           },
         },
@@ -88,7 +107,7 @@ export async function GET(
     ]);
 
     const serialized = proposals.map((p) =>
-      serializeProposal(p, role, session.user.id)
+      serializeProposal(p, role, session.user.id, requestingUserInstitutionId)
     );
 
     return ok({
@@ -139,7 +158,13 @@ export async function POST(
       return badRequest("Student profile not found — please complete registration");
     }
 
-    // Check for duplicate
+    const body = await req.json();
+    const parsed = ProposalCreateSchema.safeParse(body);
+    if (!parsed.success) return validationError(parsed.error.flatten());
+
+    const { summary, approachDoc, isDraft } = parsed.data;
+
+    // Check for duplicate or existing draft/revision request
     const existing = await prisma.proposal.findUnique({
       where: {
         challengeId_studentProfileId: {
@@ -148,48 +173,81 @@ export async function POST(
         },
       },
     });
+
+    let proposal;
+    let transitionAction: "PROPOSAL_SUBMITTED" | "PROPOSAL_STATUS_CHANGED" = "PROPOSAL_SUBMITTED";
+
     if (existing) {
-      return conflict("You have already submitted a proposal for this challenge");
-    }
+      if (
+        existing.status === "SUBMITTED" ||
+        existing.status === "UNDER_REVIEW" ||
+        existing.status === "RESUBMITTED" ||
+        existing.status === "APPROVED" ||
+        existing.status === "REJECTED"
+      ) {
+        return conflict(`You have already submitted a proposal for this challenge (current status: ${existing.status})`);
+      }
 
-    const body = await req.json();
-    const parsed = ProposalCreateSchema.safeParse(body);
-    if (!parsed.success) return validationError(parsed.error.flatten());
+      let nextStatus = existing.status;
+      if (!isDraft) {
+        if (existing.status === "DRAFT") {
+          nextStatus = "SUBMITTED";
+        } else if (existing.status === "REVISION_REQUESTED") {
+          nextStatus = "RESUBMITTED";
+        }
+      }
 
-    const proposal = await prisma.proposal.create({
-      data: {
-        challengeId: id,
-        studentProfileId: studentProfile.id,
-        summary: parsed.data.summary,
-        approachDoc: parsed.data.approachDoc,
-        status: "SUBMITTED",
-      },
-    });
-
-    // Get industry user via industry profile
-    const industryProfile = await prisma.industryProfile.findUnique({
-      where: { id: challenge.industryProfileId },
-      select: { userId: true },
-    });
-
-    if (industryProfile) {
-      await prisma.notification.create({
+      proposal = await prisma.proposal.update({
+        where: { id: existing.id },
         data: {
-          userId: industryProfile.userId,
-          title: "New Proposal Received",
-          body: `A new proposal has been submitted for your challenge: "${challenge.title}"`,
-          link: `/api/challenges/${id}/proposals/${proposal.id}`,
+          summary,
+          approachDoc: approachDoc ?? existing.approachDoc,
+          status: nextStatus,
         },
       });
+      transitionAction = "PROPOSAL_STATUS_CHANGED";
+    } else {
+      const initialStatus = isDraft ? "DRAFT" : "SUBMITTED";
+      proposal = await prisma.proposal.create({
+        data: {
+          challengeId: id,
+          studentProfileId: studentProfile.id,
+          summary,
+          approachDoc,
+          status: initialStatus,
+        },
+      });
+    }
+
+    // Only notify industry if proposal is submitted/resubmitted
+    if (proposal.status === "SUBMITTED" || proposal.status === "RESUBMITTED") {
+      const industryProfile = await prisma.industryProfile.findUnique({
+        where: { id: challenge.industryProfileId },
+        select: { userId: true },
+      });
+
+      if (industryProfile) {
+        await prisma.notification.create({
+          data: {
+            userId: industryProfile.userId,
+            title: proposal.status === "RESUBMITTED" ? "Proposal Resubmitted" : "New Proposal Received",
+            body: proposal.status === "RESUBMITTED"
+              ? `A proposal has been resubmitted for your challenge: "${challenge.title}"`
+              : `A new proposal has been submitted for your challenge: "${challenge.title}"`,
+            link: `/api/challenges/${id}/proposals/${proposal.id}`,
+          },
+        });
+      }
     }
 
     const { ipAddress, userAgent } = getRequestMeta(req);
     await createAuditLog({
       userId: session.user.id,
-      action: "PROPOSAL_SUBMITTED",
+      action: transitionAction,
       entityType: "Proposal",
       entityId: proposal.id,
-      newValue: { challengeId: id, status: "SUBMITTED" },
+      oldValue: existing ? { status: existing.status } : null,
+      newValue: { challengeId: id, status: proposal.status },
       ipAddress,
       userAgent,
     });

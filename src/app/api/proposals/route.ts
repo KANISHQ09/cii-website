@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
     const role = session.user.role;
     const userId = session.user.id;
     const skip = (page - 1) * limit;
+    let requestingUserInstitutionId: string | undefined;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let where: any = status ? { status } : {};
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
       });
       if (!profile) return ok({ data: [], pagination: { total: 0, page, limit, totalPages: 0 } });
       where.studentProfile = { institutionId: profile.institutionId };
+      requestingUserInstitutionId = profile.institutionId;
     }
     // SUPER_ADMIN and CII_ADMIN: no filter (see all)
 
@@ -77,6 +79,8 @@ export async function GET(req: NextRequest) {
               department: true,
               yearOfStudy: true,
               skills: true,
+              institutionId: true,
+              user: { select: { name: true, email: true } },
             },
           },
           challenge: { select: { title: true, domain: true } },
@@ -85,7 +89,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     const serialized = proposals.map((p) =>
-      serializeProposal(p, role, userId)
+      serializeProposal(p, role, userId, requestingUserInstitutionId)
     );
 
     return ok({

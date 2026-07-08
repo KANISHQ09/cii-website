@@ -18,6 +18,7 @@ const AUTH_REQUIRED_PREFIXES = [
   "/api/admin",
   "/api/users",
   "/api/institutions",
+  "/api/upload",
 ];
 
 const PUBLIC_API_PREFIXES = [

@@ -47,7 +47,9 @@ export type SafeProposal = {
   submittedAt: Date;
   updatedAt: Date;
   student?: {
-    // stripped for industry (no PII)
+    name?: string; // PII (only for admins/spoc/owner)
+    email?: string; // PII (only for admins/spoc/owner)
+    enrollmentNo?: string; // PII (only for admins/spoc/owner)
     department: string;
     yearOfStudy: number;
     skills: string[];
@@ -123,14 +125,16 @@ export function serializeChallenge(
 /**
  * Serialize a proposal.
  * - Industry SPOC: student identity/PII hidden (only department, year, skills)
- * - Student: sees own proposal + feedback only if approved/rejected
+ * - Institution SPOC: sees PII only if student belongs to their institution
+ * - Student: sees own proposal + PII
  * - Admin: sees everything
  */
 export function serializeProposal(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   proposal: any,
   requestingRole: Role,
-  requestingUserId?: string
+  requestingUserId?: string,
+  requestingUserInstitutionId?: string
 ): SafeProposal {
   const isAdmin =
     requestingRole === "SUPER_ADMIN" || requestingRole === "CII_ADMIN";
@@ -139,25 +143,26 @@ export function serializeProposal(
     requestingRole === "STUDENT" &&
     proposal.studentProfile?.userId === requestingUserId;
 
-  // Industry sees limited student info (no name, email, enrollmentNo)
+  const isInstSpocOwner =
+    requestingRole === "INSTITUTION_SPOC" &&
+    requestingUserInstitutionId &&
+    proposal.studentProfile?.institutionId === requestingUserInstitutionId;
+
+  // Check if we can show PII (Name, Email, Enrollment Number)
+  const showPII = isAdmin || isOwner || isInstSpocOwner;
+
   let studentData: SafeProposal["student"] = undefined;
-  if (isAdmin) {
+
+  if (proposal.studentProfile) {
     studentData = {
-      department: proposal.studentProfile?.department,
-      yearOfStudy: proposal.studentProfile?.yearOfStudy,
-      skills: proposal.studentProfile?.skills ?? [],
-    };
-  } else if (isIndustry) {
-    studentData = {
-      department: proposal.studentProfile?.department,
-      yearOfStudy: proposal.studentProfile?.yearOfStudy,
-      skills: proposal.studentProfile?.skills ?? [],
-    };
-  } else if (isOwner) {
-    studentData = {
-      department: proposal.studentProfile?.department,
-      yearOfStudy: proposal.studentProfile?.yearOfStudy,
-      skills: proposal.studentProfile?.skills ?? [],
+      department: proposal.studentProfile.department,
+      yearOfStudy: proposal.studentProfile.yearOfStudy,
+      skills: proposal.studentProfile.skills ?? [],
+      ...(showPII && {
+        name: proposal.studentProfile.user?.name ?? proposal.studentProfile.name,
+        email: proposal.studentProfile.user?.email ?? proposal.studentProfile.email,
+        enrollmentNo: proposal.studentProfile.enrollmentNo,
+      }),
     };
   }
 
