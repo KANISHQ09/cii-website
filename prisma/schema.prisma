@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── ENUMS ───────────────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ model User {
   auditLogs           AuditLog[]
   notifications       Notification[]
   passwordResetTokens PasswordResetToken[]
+  reviewedChallenges  Challenge[]          @relation("ChallengeReviewer")
 
   @@index([email])
   @@index([role])
@@ -194,6 +196,16 @@ model Challenge {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
   publishedAt       DateTime?
+
+  // Project metadata
+  organizationName  String?
+  duration          String?
+
+  // Review status fields
+  reviewRemarks     String?
+  reviewedAt        DateTime?
+  reviewerId        String?
+  reviewer          User?           @relation("ChallengeReviewer", fields: [reviewerId], references: [id])
 
   @@index([status])
   @@index([domain])

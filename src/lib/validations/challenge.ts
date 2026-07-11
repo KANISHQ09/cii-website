@@ -19,7 +19,11 @@ export const ChallengeCreateSchema = z.object({
   budgetRange: z.string().optional(),
   tags: z.array(z.string()).max(10).optional(),
   attachmentUrls: z.array(z.string().url()).optional(),
+  organizationName: z.string().min(2, "Organization name must be at least 2 characters").max(100).optional(),
+  duration: z.string().min(1, "Duration is required").max(50).optional(),
+  status: z.enum(["DRAFT", "OPEN", "UNDER_REVIEW", "CLOSED", "ARCHIVED"]).optional(),
 });
+
 
 export const ChallengeUpdateSchema = ChallengeCreateSchema.partial().extend({
   status: z

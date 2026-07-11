@@ -170,7 +170,9 @@ export async function POST(req: NextRequest) {
         tags: data.tags ?? [],
         attachmentUrls: data.attachmentUrls ?? [],
         industryProfileId: industryProfile.id,
-        status: "DRAFT",
+        status: data.status ?? "UNDER_REVIEW",
+        organizationName: data.organizationName ?? industryProfile.companyName,
+        duration: data.duration ?? null,
       },
     });
 
