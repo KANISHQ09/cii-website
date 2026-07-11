@@ -48,7 +48,7 @@ describe("RBAC & Object-Level Access Control", () => {
   describe("Challenge Status & Visibility", () => {
     it("should allow a guest to view an OPEN challenge", async () => {
       // Mock unauthenticated session
-      vi.mocked(auth).mockResolvedValue(null);
+      vi.mocked(auth as any).mockResolvedValue(null);
 
       // Mock open challenge in DB
       vi.mocked(prisma.challenge.findUnique).mockResolvedValue({
@@ -85,7 +85,7 @@ describe("RBAC & Object-Level Access Control", () => {
     });
 
     it("should block a student from viewing a DRAFT challenge", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "student-1", role: "STUDENT", email: "student@jlu.edu.in", name: "Student" },
         expires: "",
       });
@@ -104,7 +104,7 @@ describe("RBAC & Object-Level Access Control", () => {
     });
 
     it("should allow the creator Industry SPOC to view their own DRAFT challenge", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "industry-user-1", role: "INDUSTRY_SPOC", email: "hr@techcorp.com", name: "Industry" },
         expires: "",
       });
@@ -125,7 +125,7 @@ describe("RBAC & Object-Level Access Control", () => {
 
   describe("Proposal Authorization & Filtering", () => {
     it("should block an unauthorized user from viewing a proposal details", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "student-2", role: "STUDENT", email: "stud2@jlu.edu.in", name: "Student 2" },
         expires: "",
       });
@@ -143,7 +143,7 @@ describe("RBAC & Object-Level Access Control", () => {
     });
 
     it("should allow student owner to view their own proposal details", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "student-1", role: "STUDENT", email: "stud1@jlu.edu.in", name: "Student 1" },
         expires: "",
       });
@@ -161,7 +161,7 @@ describe("RBAC & Object-Level Access Control", () => {
     });
 
     it("should allow institution SPOC to view proposal details of their own institution student", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "spoc-user-1", role: "INSTITUTION_SPOC", email: "spoc@jlu.edu.in", name: "SPOC" },
         expires: "",
       });
@@ -183,7 +183,7 @@ describe("RBAC & Object-Level Access Control", () => {
     });
 
     it("should block institution SPOC from viewing proposals of students from other institutions", async () => {
-      vi.mocked(auth).mockResolvedValue({
+      vi.mocked(auth as any).mockResolvedValue({
         user: { id: "spoc-user-1", role: "INSTITUTION_SPOC", email: "spoc@jlu.edu.in", name: "SPOC" },
         expires: "",
       });

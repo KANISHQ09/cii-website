@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { ProposalStatus } from "@prisma/client";
 import { ProposalCreateSchema, ProposalQuerySchema } from "@/lib/validations/proposal";
 import { createAuditLog, getRequestMeta } from "@/lib/audit";
 import { serializeProposal } from "@/lib/serializers";
@@ -188,7 +189,7 @@ export async function POST(
         return conflict(`You have already submitted a proposal for this challenge (current status: ${existing.status})`);
       }
 
-      let nextStatus = existing.status as any;
+      let nextStatus: ProposalStatus = existing.status;
       if (!isDraft) {
         if (existing.status === "DRAFT") {
           nextStatus = "SUBMITTED";

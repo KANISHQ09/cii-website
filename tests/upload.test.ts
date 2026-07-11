@@ -24,7 +24,7 @@ vi.mock("../src/lib/prisma", () => ({
 describe("File Upload validations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(auth).mockResolvedValue({
+    vi.mocked(auth as any).mockResolvedValue({
       user: { id: "user-1", role: "STUDENT", email: "student@jlu.edu.in", name: "Student" },
       expires: "",
     });
