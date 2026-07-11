@@ -27,6 +27,11 @@ export type SafeChallenge = {
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
+  organizationName?: string | null;
+  duration?: string | null;
+  reviewRemarks?: string | null;
+  reviewedAt?: Date | null;
+  reviewerId?: string | null;
   industry: {
     companyName: string;
     industry: string;
@@ -35,7 +40,6 @@ export type SafeChallenge = {
   };
   _count?: { proposals: number };
 };
-
 export type SafeProposal = {
   id: string;
   challengeId: string;
@@ -112,6 +116,11 @@ export function serializeChallenge(
     createdAt: challenge.createdAt,
     updatedAt: challenge.updatedAt,
     publishedAt: challenge.publishedAt,
+    organizationName: challenge.organizationName,
+    duration: challenge.duration,
+    reviewRemarks: challenge.reviewRemarks,
+    reviewedAt: challenge.reviewedAt,
+    reviewerId: challenge.reviewerId,
     industry: {
       companyName: challenge.industryProfile?.companyName ?? "",
       industry: challenge.industryProfile?.industry ?? "",

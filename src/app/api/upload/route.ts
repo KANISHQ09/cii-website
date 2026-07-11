@@ -7,9 +7,7 @@ import {
   created,
 } from "@/lib/api-response";
 import { createAuditLog, getRequestMeta } from "@/lib/audit";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
-import crypto from "crypto";
+import { storageProvider } from "@/lib/storage";
 
 const MAX_LOGO_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_DOC_SIZE = 10 * 1024 * 1024; // 10MB
@@ -68,27 +66,13 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Generate secure, unique filename to prevent overwrites or directory traversal
-    const fileExt = mimeType === "application/pdf"
-      ? "pdf"
-      : mimeType === "application/msword"
-      ? "doc"
-      : mimeType === "image/png"
-      ? "png"
-      : mimeType === "image/webp"
-      ? "webp"
-      : "docx"; // default fallback for ALLOWED_DOC_TYPES
-
-    const secureName = `${crypto.randomUUID()}.${fileExt}`;
-
-    // Define local upload directory (falls back to local filesystem storage for dev/test)
-    const uploadDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadDir, { recursive: true });
-
-    const filePath = join(uploadDir, secureName);
-    await writeFile(filePath, buffer);
-
-    const relativeUrl = `/uploads/${secureName}`;
+    // Delegate storage writing to storage provider
+    const { url: relativeUrl, secureName } = await storageProvider.uploadFile(
+      buffer,
+      file.name,
+      mimeType,
+      uploadType
+    );
 
     // Log the file upload in audit log
     const { ipAddress, userAgent } = getRequestMeta(req);
@@ -120,3 +104,4 @@ export async function POST(req: NextRequest) {
     return serverError();
   }
 }
+
